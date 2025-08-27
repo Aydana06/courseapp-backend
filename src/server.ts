@@ -1,31 +1,47 @@
-import express from 'express';
+// src/server.ts
+import express from "express";
 import cors from 'cors';
-import { config } from './config.js';
-import authRoutes from './routes/auth.js';
-import courseRoutes from './routes/courses.js';
-import progressRoutes from './routes/progress.js';
-import certificateRoutes from './routes/certificates.js';
-import commentRoutes from './routes/comments.js';
-import cartRoutes from './routes/cart.js';
+import cookieParser from "cookie-parser";
+import { connectDB } from "./config/db.js";
+import userRoutes from "./routes/userRoutes.js";
+import comments from "./routes/comments.js";
+import courses from "./routes/courses.js"
+import auth from "./routes/auth.js";
+import  progress  from "./routes/progress.js";
+
 
 const app = express();
-app.use(cors({ origin: config.CORS_ORIGIN }));
 app.use(express.json());
+app.use(cookieParser());
 
-// Health
-app.get('/health', (_req, res) => res.json({ ok: true }));
+// CORS тохиргоо
+app.use(
+  cors({
+    origin: ["http://localhost:4200"],
+    credentials: true,                
+  })
+);
 
-// API
-app.use('/auth', authRoutes);
-app.use('/courses', courseRoutes);
-app.use('/progress', progressRoutes);
-app.use('/certificates', certificateRoutes);
-app.use('/comments', commentRoutes);
-app.use('/cart', cartRoutes);
 
-// 404
-app.use((_req, res) => res.status(404).json({ success: false, message: 'Not found' }));
+// routes
+app.use("/api/users", userRoutes);
+app.use("/api/courses", courses);
+app.use("/api/comments", comments);
+app.use("/api/auth", auth);
+app.use("/api/progress", progress);
 
-app.listen(config.PORT, () => {
-  console.log(`API listening on http://localhost:${config.PORT}`);
-});
+const PORT = 5000;
+
+const startServer = async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  } catch (err) {
+    console.error("DB connection failed", err);
+    process.exit(1);
+  }
+};
+
+startServer();
+
+

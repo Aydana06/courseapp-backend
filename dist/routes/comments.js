@@ -1,41 +1,72 @@
-import { Router } from 'express';
-import { comments } from '../data/db.js';
-import { authGuard } from '../middleware/auth.js';
+// routes/comments.ts
+import { Router } from "express";
+import mongoose from "mongoose";
+import { authGuard } from "../middleware/auth.js";
+import CommentModel from "../models/Comment.js";
 const router = Router();
-// бүх коммент
-router.get('/', (_req, res) => {
-    res.json({ success: true, data: comments });
+//  Бүх коммент авах
+router.get("/", async (_req, res) => {
+    try {
+        const comments = await CommentModel.find().sort({ createdAt: -1 });
+        res.json({ success: true, data: comments });
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Серверийн алдаа" });
+    }
 });
-// шинэ коммент нэмэх (зөвхөн нэвтэрсэн хэрэглэгч)
-router.post('/', authGuard, (req, res) => {
-    const { name, role, content, rating } = req.body;
-    if (!name || !content) {
-        return res.status(400).json({ success: false, message: 'Нэр болон сэтгэгдэл шаардлагатай' });
+//  Шинэ коммент нэмэх (зөвхөн нэвтэрсэн хэрэглэгч)
+router.post("/", authGuard, async (req, res) => {
+    try {
+        const { content, rating } = req.body;
+        const user = req.user;
+        if (!user)
+            return res.status(401).json({ success: false, message: "Нэвтрэх шаардлагатай" });
+        if (!content)
+            return res.status(400).json({ success: false, message: "Сэтгэгдэл шаардлагатай" });
+        const comment = await CommentModel.create({
+            userId: new mongoose.Types.ObjectId(user.id), // String -> ObjectId
+            name: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+            role: user.role || "student",
+            content,
+            rating: rating || 5
+        });
+        res.status(201).json({ success: true, data: comment });
     }
-    const newComment = {
-        id: comments.length > 0 ? comments[comments.length - 1].id + 1 : 1,
-        name,
-        role: role || 'Guest',
-        content,
-        rating: rating || 5,
-        userId: req.user.id
-    };
-    0;
-    comments.unshift(newComment);
-    res.status(201).json({ success: true, data: newComment });
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Серверийн алдаа" });
+    }
 });
-// коммент устгах (зөвхөн өөрийнхөө эсвэл админ)
-router.delete('/:id', authGuard, (req, res) => {
-    const id = Number(req.params.id);
-    const index = comments.findIndex(c => c.id === id);
-    if (index === -1) {
-        return res.status(404).json({ success: false, message: 'Сэтгэгдэл олдсонгүй' });
+//  Коммент устгах (зөвхөн өөрийнхөө эсвэл админ)
+router.delete("/:id", authGuard, async (req, res) => {
+    try {
+        const comment = await CommentModel.findById(req.params.id);
+        if (!comment)
+            return res.status(404).json({ success: false, message: "Сэтгэгдэл олдсонгүй" });
+        if (comment.userId.toString() !== req.user?.id && req.user?.role !== "admin") {
+            return res.status(403).json({ success: false, message: "Үйлдэл хийх эрхгүй" });
+        }
+        await CommentModel.findByIdAndDelete(req.params.id);
+        res.json({ success: true, message: "Сэтгэгдэл устгагдлаа" });
     }
-    const comment = comments[index];
-    if (comment.userId !== req.user.id && req.user.role !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Устгах эрхгүй байна' });
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Серверийн алдаа" });
     }
-    comments.splice(index, 1);
-    res.json({ success: true, message: 'Сэтгэгдэл устгагдлаа' });
+});
+//  Нэг коммент авах
+router.get("/:id", async (req, res) => {
+    try {
+        const comment = await CommentModel.findById(req.params.id);
+        if (!comment) {
+            return res.status(404).json({ success: false, message: "Сэтгэгдэл олдсонгүй" });
+        }
+        res.json({ success: true, data: comment });
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Серверийн алдаа" });
+    }
 });
 export default router;

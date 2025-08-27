@@ -5,9 +5,11 @@ export function signAccessToken(user) {
         sub: user.id.toString(),
         role: user.role || "student",
         email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName
     };
     const options = {
-        expiresIn: config.JWT_EXPIRES_IN, // 👈 string-г зөвшөөрүүлж байна
+        expiresIn: config.JWT_EXPIRES_IN,
     };
     return jwt.sign(payload, config.JWT_SECRET, options);
 }

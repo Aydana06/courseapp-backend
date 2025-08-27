@@ -1,31 +1,50 @@
-import { Router } from 'express';
-import { courses } from '../data/db.js';
-import type { ApiResponse, Course } from '../types.js';
+// src/routes/courses.ts
+import { Router } from "express";
+import type { Response } from "express";
+import CourseModel, { ICourse } from "../models/Course.js";
+import { authGuard, AuthRequest } from "../middleware/auth.js";
 
 const router = Router();
 
 // бүх курс (эсвэл maxId хүртэлх курс)
-router.get('/', (req, res) => {
+router.get("/", async (req: AuthRequest, res: Response) => {
+  try {
     const maxId = Number(req.query.maxId);
-    let result = courses;
+    let query = {};
     if (!isNaN(maxId)) {
-        result = result.filter(c => c.id <= maxId);
+      query = { _id: { $lte: maxId } }; // ObjectId-г хэрэгжүүлэхээр бол өөр логик хэрэгтэй
     }
 
-    res.json(<ApiResponse<Course[]>>{ success: true, data: result });
+    const courses = await CourseModel.find(query);
+    res.json({ success: true, data: courses });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Серверийн алдаа" });
+  }
 });
 
-router.get('/featured', (_req, res) => {
-  // жишээ нь эхний 3-ыг санал болгоно
-  res.json(<ApiResponse<Course[]>>{ success: true, data: courses.slice(0, 3) });
+// Featured курс (эхний 3-ыг санал болгоно)
+router.get("/featured", async (_req, res: Response) => {
+  try {
+    const courses = await CourseModel.find().limit(3);
+    res.json({ success: true, data: courses });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Серверийн алдаа" });
+  }
 });
 
-router.get('/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const course = courses.find(c => c.id === id);
-  if (!course) return res.status(404).json({ success: false, message: 'Course олдсонгүй' });
-  res.json(<ApiResponse<Course>>{ success: true, data: course });
+// Нэг курс авах
+router.get("/:id", async (req: AuthRequest, res: Response) => {
+  try {
+    const course = await CourseModel.findById(req.params.id);
+    if (!course) {
+      return res.status(404).json({ success: false, message: "Course олдсонгүй" });
+    }
+    res.json({ success: true, data: course });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Серверийн алдаа" });
+  }
 });
+
 
 
 export default router;

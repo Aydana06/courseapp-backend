@@ -1,88 +1,96 @@
-import { Router } from 'express';
-import { courseProgress, lessonProgress, courses } from '../data/db.js';
-import type { ApiResponse, CourseProgress, LessonProgress } from '../types.js';
+import { Router } from "express";
+import { authGuard, AuthRequest } from "../middleware/auth.js";
+import CourseProgressModel from "../models/CourseProgress.js";
+import LessonProgressModel from "../models/LessonProgress.js";
 
 const router = Router();
 
-// GET /progress/user/:userId
-router.get('/user/:userId', (req, res) => {
-  const userId = Number(req.params.userId);
-  const data = courseProgress.filter(p => p.userId === userId);
-  res.json(<ApiResponse<CourseProgress[]>>{ success: true, data });
-});
 
-// GET /progress/overall/:userId
-router.get('/overall/:userId', (req, res) => {
-  const userId = Number(req.params.userId);
-  const data = courseProgress.filter(p => p.userId === userId);
-  const totalCourses = data.length;
-  const completedCourses = data.filter(p => p.progress === 100).length;
-  const averageProgress = totalCourses ? Math.round(data.reduce((s, p) => s + p.progress, 0) / totalCourses) : 0;
-  res.json(<ApiResponse<{ totalCourses: number; completedCourses: number; averageProgress: number }>>({
-    success: true,
-    data: { totalCourses, completedCourses, averageProgress }
-  }));
-});
+// ✅ Нэг хэрэглэгчийн тодорхой курсийн progress авах
+router.get("/user/:userId/course/:courseId", authGuard, async (req: AuthRequest, res) => {
+  try {
+    const { userId, courseId } = req.params;
+    const progress = await CourseProgressModel.findOne({ userId, courseId });
 
-// GET /progress/recent/:userId
-router.get('/recent/:userId', (req, res) => {
-  const userId = Number(req.params.userId);
-  const data = courseProgress
-    .filter(p => p.userId === userId)
-    .sort((a, b) => +new Date(b.lastAccessed) - +new Date(a.lastAccessed))
-    .slice(0, 5);
-  res.json(<ApiResponse<CourseProgress[]>>{ success: true, data });
-});
+    if (!progress) {
+      return res.status(404).json({ success: false, message: "Progress олдсонгүй" });
+    }
 
-// POST /progress/update  { courseId, userId, lessonId }
-router.post('/update', (req, res) => {
-  const { courseId, userId, lessonId } = req.body as { courseId: number; userId: number; lessonId: number };
-
-  let p = courseProgress.find(pp => pp.courseId === courseId && pp.userId === userId);
-  if (!p) {
-    const totalLessons = (courses.find(c => c.id === courseId)?.details?.[0]?.lessons?.length) || 5;
-    p = {
-      courseId, userId, progress: 0, completedLessons: [], totalLessons, lastAccessed: new Date(), startDate: new Date()
-    };
-    courseProgress.push(p);
+    res.json({ success: true, data: progress });
+  } catch (err) {
+    console.error("Progress fetch error:", err);
+    res.status(500).json({ success: false, message: "Серверийн алдаа" });
   }
-  if (!p.completedLessons.includes(lessonId)) {
-    p.completedLessons.push(lessonId);
-    p.progress = Math.round((p.completedLessons.length / p.totalLessons) * 100);
-    p.lastAccessed = new Date();
-  }
-  res.json(<ApiResponse<CourseProgress>>{ success: true, data: p });
 });
 
-// GET /progress/lesson?lessonId=&courseId=&userId=
-router.get('/lesson', (req, res) => {
-  const lessonId = Number(req.query.lessonId);
-  const courseId = Number(req.query.courseId);
-  const userId = Number(req.query.userId);
-  const lp = lessonProgress.find(l => l.lessonId === lessonId && l.courseId === courseId && l.userId === userId) || null;
-  res.json(<ApiResponse<LessonProgress | null>>{ success: true, data: lp });
+
+// GET /progress/user
+router.get("/user", authGuard, async (req: AuthRequest, res) => {
+  try {
+    const data = await CourseProgressModel.find({ userId: req.user!.id });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Серверийн алдаа" });
+  }
+});
+
+// POST /progress/update
+router.post("/update", authGuard, async (req: AuthRequest, res) => {
+  try {
+    const { courseId, lessonId } = req.body;
+    let progress = await CourseProgressModel.findOne({ userId: req.user!.id, courseId });
+
+    if (!progress) {
+      progress = await CourseProgressModel.create({
+        userId: req.user!.id,
+        courseId,
+        completedLessons: [],
+        progress: 0,
+        totalLessons: 5 // mock, Course моделээс авах боломжтой
+      });
+    }
+
+    if (!progress.completedLessons.includes(lessonId)) {
+      progress.completedLessons.push(lessonId);
+      progress.progress = Math.round((progress.completedLessons.length / progress.totalLessons) * 100);
+      progress.lastAccessed = new Date();
+      await progress.save();
+    }
+
+    res.json({ success: true, data: progress });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Серверийн алдаа" });
+  }
 });
 
 // POST /progress/lesson/complete
-router.post('/lesson/complete', (req, res) => {
-  const { lessonId, courseId, userId, timeSpent, quizScore } = req.body as {
-    lessonId: number; courseId: number; userId: number; timeSpent: number; quizScore?: number;
-  };
-  let lp = lessonProgress.find(l => l.lessonId === lessonId && l.courseId === courseId && l.userId === userId);
-  if (!lp) {
-    lp = { lessonId, courseId, userId, completed: true, completedAt: new Date(), timeSpent, quizScore };
-    lessonProgress.push(lp);
-  } else {
-    lp.completed = true;
-    lp.completedAt = new Date();
-    lp.timeSpent = timeSpent;
-    if (typeof quizScore !== 'undefined') lp.quizScore = quizScore;
+router.post("/lesson/complete", authGuard, async (req: AuthRequest, res) => {
+  try {
+    const { courseId, lessonId, timeSpent, quizScore } = req.body;
+    let lp = await LessonProgressModel.findOne({ userId: req.user!.id, courseId, lessonId });
+
+    if (!lp) {
+      lp = await LessonProgressModel.create({
+        userId: req.user!.id,
+        courseId,
+        lessonId,
+        completed: true,
+        completedAt: new Date(),
+        timeSpent,
+        quizScore
+      });
+    } else {
+      lp.completed = true;
+      lp.completedAt = new Date();
+      lp.timeSpent = timeSpent;
+      if (quizScore !== undefined) lp.quizScore = quizScore;
+      await lp.save();
+    }
+
+    res.json({ success: true, data: lp });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Серверийн алдаа" });
   }
-  // update course progress too
-  const fakeReq = { body: { courseId, userId, lessonId } } as any;
-  const fakeRes = { json: () => {} } as any;
-  // (бодитод бол үйлдлээ сэргээд дуудаарай)
-  res.json(<ApiResponse<LessonProgress>>{ success: true, data: lp });
 });
 
 export default router;

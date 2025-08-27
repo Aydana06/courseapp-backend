@@ -1,129 +1,141 @@
-import { Router } from 'express';
-import type { Request, Response } from 'express';
-import { User } from '../types'; // өөрийн User type оруулж ирээрэй
+import { Router, Request, Response } from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import User from "../models/User.js";
+import RefreshToken from "../models/RefreshToken.js";
+import { sha256, generateRefreshTokenValue, refreshExpiryDate, signAccessToken } from "../utils/tokens.js";
+import { setRefreshCookie, clearRefreshCookie } from "../utils/cookies.js";
+import { signRefreshToken } from "../utils/jwt.js";
 
 const router = Router();
 
-// Mock users хадгалах
-let users: User[] = [];
-let tokens: string[] = [];
+router.post("/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
 
-// ----------------- LOGIN -----------------
-router.post('/login', (req: Request, res: Response) => {
-  const { email, password } = req.body;
-
-  // Demo: зөвхөн нэг хэрэглэгч байг гэж үзье
-  const existingUser = users.find(u => u.email === email);
-
-  if (!existingUser || password !== '123456') {
-    return res.status(401).json({
-      success: false,
-      message: 'Нэвтрэх нэр эсвэл нууц үг буруу байна'
-    });
-  }
-
-  const token = 'mock_token_' + Date.now();
-  tokens.push(token);
-
-  return res.json({
-    success: true,
-    data: {
-      user: existingUser,
-      token
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: "Имэйл буруу байна" });
     }
-  });
-});
 
-// ----------------- REGISTER -----------------
-router.post('/register', (req: Request, res: Response) => {
-  const { firstName, lastName, email, phone, password } = req.body;
-
-  if (users.some(u => u.email === email)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Энэ имэйл бүртгэлтэй байна'
-    });
-  }
-
-  const newUser: User = {
-    id: Date.now(),
-    firstName,
-    lastName,
-    email,
-    phone,
-    name: '',
-    role: 'student',
-    createdAt: new Date().toISOString(),
-    lastLoginAt: new Date().toISOString(),
-    bio: '',
-    preferences: {
-      language: 'Монгол',
-      notifications: true,
-      newsletter: false
-    },
-    enrolledCourses: [],
-    progress: [],
-    certificates: []
-  };
-
-  users.push(newUser);
-
-  const token = 'mock_token_' + Date.now();
-  tokens.push(token);
-
-  return res.json({
-    success: true,
-    data: {
-      user: newUser,
-      token
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Нууц үг буруу байна" });
     }
-  });
+
+    // Access Token гаргах
+    const accessToken = signAccessToken(user);
+
+    const { password: _pw, ...safeUser } = user.toObject();
+
+    return res.json({
+      success: true,
+      message: "Амжилттай нэвтэрлээ",
+      data: {
+        user: { ...safeUser, id: user._id },
+        accessToken
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Серверийн алдаа" });
+  }
 });
 
-// ----------------- REFRESH TOKEN -----------------
-router.post('/refresh', (req: Request, res: Response) => {
-  const token = 'mock_refreshed_token_' + Date.now();
+/** REGISTER */
+router.post("/register", async (req: Request, res: Response) => {
+  try {
+    const { firstName, lastName, email, password, role, phone} = req.body;
+
+    // Email давхцаж байгаа эсэх шалгах
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(400).json({ message: "Энэ имэйлээр бүртгэл хийгдсэн байна" });
+    }
+
+    // Нууц үг хэшлэх
+    const hashed = await bcrypt.hash(password, 10);
+
+    // Хэрэглэгч үүсгэх
+    const user = await User.create({
+      firstName,
+      lastName,
+      email,
+      password: hashed,
+      phone,
+      role: role || "student",
+    });
+
+    // Access + Refresh token гаргах
+    const accessToken = signAccessToken(user);
+
+    const plainRefresh = generateRefreshTokenValue();
+    await RefreshToken.create({
+      user: user._id,
+      tokenHash: sha256(plainRefresh),
+      expiresAt: refreshExpiryDate(),
+    });
+    setRefreshCookie(res, plainRefresh);
+
+    const { password: _pw, ...safeUser } = user.toObject();
+
+    return res.status(201).json({
+      success: true,
+      message: "Бүртгэл амжилттай",
+      data: {
+        user: { ...safeUser, id: user._id },
+        accessToken
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Серверийн алдаа" });
+  }
+});
+
+/** REFRESH */
+router.post("/refresh", async (req: Request, res: Response) => {
+  const cookieToken = req.cookies?.["refresh_token"];
+  if (!cookieToken) return res.status(401).json({ message: "Refresh token байхгүй" });
+
+  const tokenHash = sha256(cookieToken);
+  const existing = await RefreshToken.findOne({ tokenHash }).populate("user");
+  if (!existing || !existing.user) {
+    clearRefreshCookie(res);
+    return res.status(401).json({ message: "Refresh token хүчингүй" });
+  }
+
+  if (existing.expiresAt < new Date()) {
+    clearRefreshCookie(res);
+    return res.status(401).json({ message: "Refresh token хугацаа дууссан" });
+  }
+
+  // Rotate
+  const newPlain = generateRefreshTokenValue();
+  await RefreshToken.create({
+    user: existing.user._id,
+    tokenHash: sha256(newPlain),
+    expiresAt: refreshExpiryDate(),
+  });
+  existing.revokedAt = new Date();
+  await existing.save();
+
+  const newAccessToken = signAccessToken(existing.user as any);
+  setRefreshCookie(res, newPlain);
+
   return res.json({
-    success: true,
-    data: { token }
-  });
+  success: true,
+  message: "Access token шинэчлэгдлээ",
+  data: { accessToken: newAccessToken }
 });
 
-// ----------------- UPDATE PROFILE -----------------
-router.put('/profile', (req: Request, res: Response) => {
-  const { id, ...updates } = req.body;
-
-  const userIndex = users.findIndex(u => u.id === id);
-  if (userIndex === -1) {
-    return res.status(404).json({ success: false, message: 'Хэрэглэгч олдсонгүй' });
-  }
-
-  users[userIndex] = { ...users[userIndex], ...updates };
-
-  return res.json({ success: true, data: users[userIndex] });
 });
 
-// ----------------- VERIFY EMAIL -----------------
-router.post('/verify-email', (req: Request, res: Response) => {
-  const { token } = req.body;
-
-  if (token) {
-    return res.json({ success: true, data: true });
-  } else {
-    return res.status(400).json({ success: false, data: false });
-  }
-});
-
-// ----------------- RESET PASSWORD -----------------
-router.post('/reset-password', (req: Request, res: Response) => {
-  const { email } = req.body;
-
-  if (!users.some(u => u.email === email)) {
-    return res.status(404).json({ success: false, message: 'Ийм имэйл байхгүй' });
-  }
-
-  // Жинхэнэдээ email илгээх ёстой
-  return res.json({ success: true, data: true });
+/** LOGOUT */
+router.post("/logout", async (req: Request, res: Response) => {
+  clearRefreshCookie(res);
+  return res.json({ success: true });
 });
 
 export default router;

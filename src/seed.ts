@@ -1,61 +1,31 @@
-import bcrypt from 'bcryptjs';
-import type {
-  User, Course, Comments, CourseProgress, LessonProgress, Certificate
-} from '../types.js';
+import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 
-const passwordHash = bcrypt.hashSync('123456', 10);
+// Models
+import User from "./models/User.js";
+import Course from "./models/Course.js";
+import Comment from "./models/Comment.js";
+import CourseProgress from "./models/CourseProgress.js";
+import LessonProgress from "./models/LessonProgress.js";
 
-export const users: User[] = [
+const seedDB = async () => {
+  try {
+    await mongoose.connect("mongodb://127.0.0.1:27017/elearning");
+    console.log("✅ MongoDB connected");
+
+    // Clear old data
+    await User.deleteMany({});
+    await Course.deleteMany({});
+    await Comment.deleteMany({});
+    await CourseProgress.deleteMany({});
+    await LessonProgress.deleteMany({});
+
+    console.log("Old data cleared");
+
+    const passwordHash = bcrypt.hashSync("123456", 10);
+
+    const courses = [
   {
-    id: 1,
-    firstName: 'Bolat', 
-    lastName: 'Aydana',
-    email: 'bolataidana73@gmail.com',
-    password: "123456",  
-    phone: '90908990',
-    name: 'Bolat Aydana',
-    role: 'student',
-    createdAt: new Date().toISOString(),
-    lastLoginAt: new Date().toISOString(),
-    enrolledCourses: [1, 2],
-    progress: [],
-    certificates: []
-  }
-];
-
-export const comments: Comments[] = [
-     { id: 1,
-    name: 'Болд',
-    role: 'Frontend Developer',
-    content: 'Энэ сургалт миний карьерт маш их тустай байсан. Одоо илүү сайн ажил хийж байна.',
-    rating: 5,
-    userId: '1'
-  },
-  {
-     id: 2,
-    name: 'Алтанцэцэг',
-    role: 'Student',
-    content: 'Багш нар маш сайн заадаг, материал нь ойлгомжтой байсан.',
-    rating: 5,
-    userId: '2'
-  },
-  {
-     id: 3,
-    name: 'Энхбат',
-    role: 'Software Engineer',
-    content: 'Практик дадлага хийх боломжтой байсан нь маш сайн.',
-    rating: 4,
-    userId: '1'
-  }
-]
-
-// email -> passwordHash
-export const credentials: Record<string, string> = {
-  'bolataidana73@gmail.com': passwordHash
-};
-
-export const courses: Course[] = [
-    {
       id: 1,
       title: 'Angular',
       description: 'Angular-ийн хамгийн сүүлийн үеийн онцлогуудыг сурна уу. Components, Services, Routing, Forms, HTTP Client зэргийг дэлгэрэнгүй.',
@@ -123,7 +93,7 @@ export const courses: Course[] = [
         'State management шийдлүүд'
       ]}]
     },
-    {
+   {
       id: 3,
       title: 'Node.js Backend Development',
       description: 'Node.js ашиглан backend систем хөгжүүлэх. Express.js, MongoDB, Authentication, API development.',
@@ -263,57 +233,68 @@ export const courses: Course[] = [
       ]
       }]
     }
-  ];
+];
 
-export const courseProgress: CourseProgress[] = [
+    const createdCourses = await Course.insertMany(courses);
+    console.log("Courses added");
+
+    const users = [
   {
-    courseId: 1,
-    userId: 1,
-    progress: 65,
-    completedLessons: [1,2,3],
-    totalLessons: 5,
-    lastAccessed: new Date('2025-01-15'),
-    startDate: new Date('2025-01-01'),
-    estimatedCompletion: new Date('2025-02-01')
-  },
-  {
-    courseId: 2,
-    userId: 1,
-    progress: 30,
-    completedLessons: [1],
-    totalLessons: 5,
-    lastAccessed: new Date('2025-01-10'),
-    startDate: new Date('2025-01-05')
+    firstName: "Bolat",
+    lastName: "Aydana",
+    email: "bolataidana73@gmail.com",
+    password: passwordHash,
+    phone: "90908990",
+    name: "Bolat Aydana",
+    role: "student",
+    enrolledCourses: [createdCourses[0]._id, createdCourses[2]._id],
+    cart: [createdCourses[0]._id, createdCourses[2]._id],
   }
 ];
 
-export const lessonProgress: LessonProgress[] = [
-  {
-    lessonId: 1, courseId: 1, userId: 1,
-    completed: true, completedAt: new Date('2025-01-02'),
-    timeSpent: 45, quizScore: 85
-  },
-  {
-    lessonId: 2, courseId: 1, userId: 1,
-    completed: true, completedAt: new Date('2025-01-05'),
-    timeSpent: 60, quizScore: 90
-  },
-  {
-    lessonId: 3, courseId: 1, userId: 1,
-    completed: true, completedAt: new Date('2025-01-10'),
-    timeSpent: 75, quizScore: 88
-  }
-];
+    // Insert users
+    const createdUsers = await User.insertMany(users);
+    console.log("Users added");
+    // Insert courses
+    const sampleUser = createdUsers[0];
+    const sampleCourse = createdCourses[0];
+    
+    await Comment.create({
+      name: "Болд",
+      role: "Frontend Developer",
+      content: "Энэ сургалт миний карьерт маш их тустай байсан.",
+      rating: 5,
+      userId: sampleUser._id
+    });
 
-export const certificates: Certificate[] = [
-  {
-    id: '1',
-    userId: 1,
-    courseId: 1,
-    courseName: 'Angular Basics',
-    userName: 'Bolat Aydana',
-    issueDate: new Date('2025-01-20'),
-    grade: 'A',
-    status: 'issued'
+    await CourseProgress.create({
+      courseId: sampleCourse._id,
+      userId: sampleUser._id,
+      progress: 65,
+      completedLessons: [1, 2],
+      totalLessons: 5,
+      lastAccessed: new Date(),
+      startDate: new Date("2025-01-01"),
+      estimatedCompletion: new Date("2025-02-01")
+    });
+
+    await LessonProgress.create({
+      lessonId: 1,
+      courseId: sampleCourse._id,
+      userId: sampleUser._id,
+      completed: true,
+      completedAt: new Date("2025-01-02"),
+      timeSpent: 45,
+      quizScore: 85
+    });
+
+    console.log("Sample data seeded successfully");
+    await mongoose.disconnect();
+    process.exit(0);
+  } catch (err) {
+    console.error("Seeding error:", err);
+    process.exit(1);
   }
-];
+};
+
+seedDB();

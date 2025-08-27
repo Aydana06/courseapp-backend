@@ -7,10 +7,12 @@ export function signAccessToken(user: User): string {
     sub: user.id.toString(),
     role: user.role || "student",
     email: user.email,
+    firstName: user.firstName,  
+    lastName: user.lastName  
   };
 
   const options: SignOptions = {
-    expiresIn: config.JWT_EXPIRES_IN as jwt.SignOptions["expiresIn"], // 👈 string-г зөвшөөрүүлж байна
+    expiresIn: config.JWT_EXPIRES_IN as jwt.SignOptions["expiresIn"],
   };
 
   return jwt.sign(payload, config.JWT_SECRET as Secret, options);

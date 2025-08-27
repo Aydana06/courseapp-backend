@@ -6,8 +6,13 @@ export function authGuard(req, res, next) {
     }
     try {
         const token = header.slice(7);
-        const payload = verifyAccessToken(token); // { sub, role }
-        req.user = { id: String(payload.sub), role: String(payload.role) };
+        const payload = verifyAccessToken(token); // { sub, role, firstName?, lastName? }
+        req.user = {
+            id: String(payload.sub),
+            role: String(payload.role),
+            firstName: payload.firstName, // токенд байвал авна
+            lastName: payload.lastName
+        };
         next();
     }
     catch {

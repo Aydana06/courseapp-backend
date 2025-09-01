@@ -11,7 +11,7 @@ export interface IComment extends Document {
 
 const CommentSchema = new Schema<IComment>({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-  name: { type: String, required: true },
+  name: { type: String, required: false },
   role: { type: String, default: "student" },
   content: { type: String, required: true },
   rating: { type: Number, default: 5 },

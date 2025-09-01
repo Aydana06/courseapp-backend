@@ -5,7 +5,7 @@ import CourseModel from "../models/Course.js";
 
 const router = Router();
 
-// 🛒 Сагс ба enrollment авах
+// Сагс ба enrollment авах
 router.get("/", authGuard, async (req: AuthRequest, res) => {
   try {
     const user = await UserModel.findById(req.user?.id)
@@ -14,6 +14,7 @@ router.get("/", authGuard, async (req: AuthRequest, res) => {
 
     if (!user) return res.status(404).json({ success: false, message: "User олдсонгүй" });
 
+        const updatedUser = await UserModel.findById(req.user?.id).populate("cart");
     res.json({
       success: true,
       data: {
@@ -26,7 +27,7 @@ router.get("/", authGuard, async (req: AuthRequest, res) => {
   }
 });
 
-// 🛒 Сагсанд нэмэх
+// Сагсанд нэмэх
 router.post("/cart/:courseId", authGuard, async (req: AuthRequest, res) => {
   try {
     const user = await UserModel.findById(req.user?.id);
@@ -35,33 +36,55 @@ router.post("/cart/:courseId", authGuard, async (req: AuthRequest, res) => {
     const course = await CourseModel.findById(req.params.courseId);
     if (!course) return res.status(404).json({ success: false, message: "Курс олдсонгүй" });
 
-    if (!user.cart.includes(course._id) && !user.enrolledCourses.includes(course._id)) {
+    // ObjectId харьцуулахдаа equals() ашиглана
+    if (
+      !user.cart.some(id => id.equals(course._id)) &&
+      !user.enrolledCourses.some(id => id.equals(course._id))
+    ) {
       user.cart.push(course._id);
       await user.save();
     }
 
-    res.json({ success: true, data: user.cart });
+    // populate-тэй буцаана
+    const updatedUser = await UserModel.findById(req.user?.id).populate("cart");
+    res.json({ success: true, data: updatedUser?.cart });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ success: false, message: "Серверийн алдаа" });
   }
 });
 
-// 🛒 Сагснаас устгах
+
+// Сагснаас устгах
 router.delete("/cart/:courseId", authGuard, async (req: AuthRequest, res) => {
   try {
-    const user = await UserModel.findById(req.user?.id);
-    if (!user) return res.status(404).json({ success: false, message: "User олдсонгүй" });
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
 
-    user.cart = user.cart.filter(id => id.toString() !== req.params.courseId);
-    await user.save();
+  const user = await UserModel.findById(req.user.id);
 
-    res.json({ success: true, data: user.cart });
+  if (!user) return res.status(404).json({ success: false, message: "User олдсонгүй" });
+
+  // cart дотор зөвхөн ObjectId-ууд байгаа
+  user.cart = user.cart.filter(
+    (id: any) => id.toString() !== req.params.courseId
+  );
+
+  await user.save();
+
+  // Дахиж populate хийж буцаах
+  const updatedUser = await UserModel.findById(req.user.id).populate("cart");
+
+  res.json({ success: true, data: updatedUser?.cart });
+
   } catch (err) {
     res.status(500).json({ success: false, message: "Серверийн алдаа" });
   }
 });
 
-// 🎓 Enrollment хийх
+
+// Enrollment хийх
 router.post("/enroll/:courseId", authGuard, async (req: AuthRequest, res) => {
   try {
     const user = await UserModel.findById(req.user?.id);

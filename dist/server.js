@@ -8,6 +8,7 @@ import comments from "./routes/comments.js";
 import courses from "./routes/courses.js";
 import auth from "./routes/auth.js";
 import progress from "./routes/progress.js";
+import cartRoutes from "./routes/cartRoutes.js";
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
@@ -22,7 +23,8 @@ app.use("/api/courses", courses);
 app.use("/api/comments", comments);
 app.use("/api/auth", auth);
 app.use("/api/progress", progress);
-const PORT = 5000;
+app.use("/api/users", cartRoutes);
+const PORT = process.env.PORT || 5000;
 const startServer = async () => {
     try {
         await connectDB();

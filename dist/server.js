@@ -3,6 +3,7 @@ import express from "express";
 import cors from 'cors';
 import cookieParser from "cookie-parser";
 import { connectDB } from "./config/db.js";
+import { config } from "./config.js";
 import userRoutes from "./routes/userRoutes.js";
 import comments from "./routes/comments.js";
 import courses from "./routes/courses.js";
@@ -23,8 +24,23 @@ app.use("/api/courses", courses);
 app.use("/api/comments", comments);
 app.use("/api/auth", auth);
 app.use("/api/progress", progress);
-app.use("/api/users", cartRoutes);
-const PORT = process.env.PORT || 5000;
+app.use("/api/cart", cartRoutes);
+// Global error handler
+app.use((err, req, res, next) => {
+    console.error('Global error handler:', err);
+    res.status(500).json({
+        success: false,
+        message: 'Серверийн алдаа гарлаа'
+    });
+});
+// 404 handler
+app.use('*', (req, res) => {
+    res.status(404).json({
+        success: false,
+        message: 'API endpoint олдсонгүй'
+    });
+});
+const PORT = config.PORT;
 const startServer = async () => {
     try {
         await connectDB();

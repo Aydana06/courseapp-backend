@@ -16,7 +16,10 @@ router.get("/", async (_req, res) => {
 // Нэг хэрэглэгч авах
 router.get("/:id", async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const user = await User.findById(req.params.id)
+      .populate('progress')
+      .populate('enrolledCourses')
+      .populate('cart');
     if (!user) return res.status(404).json({ success: false, message: "User олдсонгүй" });
     res.json({ success: true, data: user });
   } catch (err) {

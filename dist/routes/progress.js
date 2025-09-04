@@ -2,14 +2,26 @@ import { Router } from "express";
 import { authGuard } from "../middleware/auth.js";
 import CourseProgressModel from "../models/CourseProgress.js";
 import LessonProgressModel from "../models/LessonProgress.js";
+import CourseModel from "../models/Course.js";
 const router = Router();
 // ✅ Нэг хэрэглэгчийн тодорхой курсийн progress авах
 router.get("/user/:userId/course/:courseId", authGuard, async (req, res) => {
     try {
         const { userId, courseId } = req.params;
-        const progress = await CourseProgressModel.findOne({ userId, courseId });
+        let progress = await CourseProgressModel.findOne({ userId, courseId });
         if (!progress) {
-            return res.status(404).json({ success: false, message: "Progress олдсонгүй" });
+            // If no progress yet, initialize one with totalLessons from Course
+            const course = await CourseModel.findById(courseId);
+            const totalLessons = course?.details?.[0]?.lessons?.length || 0;
+            progress = await CourseProgressModel.create({
+                userId,
+                courseId,
+                completedLessons: [],
+                progress: 0,
+                totalLessons,
+                startDate: new Date(),
+                lastAccessed: new Date()
+            });
         }
         res.json({ success: true, data: progress });
     }
@@ -34,12 +46,14 @@ router.post("/update", authGuard, async (req, res) => {
         const { courseId, lessonId } = req.body;
         let progress = await CourseProgressModel.findOne({ userId: req.user.id, courseId });
         if (!progress) {
+            const course = await CourseModel.findById(courseId);
+            const totalLessons = course?.details?.[0]?.lessons?.length || 0;
             progress = await CourseProgressModel.create({
                 userId: req.user.id,
                 courseId,
                 completedLessons: [],
                 progress: 0,
-                totalLessons: 5 // mock, Course моделээс авах боломжтой
+                totalLessons
             });
         }
         if (!progress.completedLessons.includes(lessonId)) {

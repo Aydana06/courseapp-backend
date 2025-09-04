@@ -16,6 +16,9 @@ router.post("/login", async (req, res) => {
         if (!isMatch) {
             return res.status(400).json({ message: "Нууц үг буруу байна" });
         }
+        // Сүүлд нэвтэрсэн огноог шинэчлэх
+        user.lastLoginAt = new Date();
+        await user.save();
         // Access Token гаргах
         const accessToken = signAccessToken(user);
         const { password: _pw, ...safeUser } = user.toObject();

@@ -14,15 +14,15 @@ router.get("/", authGuard, async (req: AuthRequest, res) => {
 
     if (!user) return res.status(404).json({ success: false, message: "User олдсонгүй" });
 
-        const updatedUser = await UserModel.findById(req.user?.id).populate("cart");
     res.json({
       success: true,
       data: {
-        cart: user.cart,
-        enrolledCourses: user.enrolledCourses
+        cart: user.cart || [],
+        enrolledCourses: user.enrolledCourses || []
       }
     });
   } catch (err) {
+    console.error('Error fetching cart and enrolled courses:', err);
     res.status(500).json({ success: false, message: "Серверийн алдаа" });
   }
 });
@@ -49,7 +49,7 @@ router.post("/cart/:courseId", authGuard, async (req: AuthRequest, res) => {
     const updatedUser = await UserModel.findById(req.user?.id).populate("cart");
     res.json({ success: true, data: updatedUser?.cart });
   } catch (err) {
-    console.error(err);
+    console.error('Error adding course to cart:', err);
     res.status(500).json({ success: false, message: "Серверийн алдаа" });
   }
 });
@@ -79,6 +79,7 @@ router.delete("/cart/:courseId", authGuard, async (req: AuthRequest, res) => {
   res.json({ success: true, data: updatedUser?.cart });
 
   } catch (err) {
+    console.error('Error removing course from cart:', err);
     res.status(500).json({ success: false, message: "Серверийн алдаа" });
   }
 });
@@ -104,6 +105,7 @@ router.post("/enroll/:courseId", authGuard, async (req: AuthRequest, res) => {
 
     res.json({ success: true, data: user.enrolledCourses });
   } catch (err) {
+    console.error('Error enrolling in course:', err);
     res.status(500).json({ success: false, message: "Серверийн алдаа" });
   }
 });

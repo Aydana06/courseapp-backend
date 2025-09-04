@@ -45,6 +45,72 @@ router.get("/:id", async (req: AuthRequest, res: Response) => {
   }
 });
 
+// Шинэ курс үүсгэх (admin/instructor эрхтэй)
+router.post("/", authGuard, async (req: AuthRequest, res: Response) => {
+  try {
+    // Зөвхөн admin эсвэл instructor эрхтэй хэрэглэгч
+    if (req.user?.role !== 'admin' && req.user?.role !== 'instructor') {
+      return res.status(403).json({ success: false, message: "Хандах эрхгүй" });
+    }
 
+    const courseData = {
+      ...req.body,
+      instructor: req.user?.firstName + ' ' + req.user?.lastName
+    };
+
+    const course = new CourseModel(courseData);
+    await course.save();
+
+    res.status(201).json({ success: true, data: course });
+  } catch (err) {
+    console.error('Error creating course:', err);
+    res.status(500).json({ success: false, message: "Сургалт үүсгэхэд алдаа гарлаа" });
+  }
+});
+
+// Курс шинэчлэх (admin/instructor эрхтэй)
+router.put("/:id", authGuard, async (req: AuthRequest, res: Response) => {
+  try {
+    // Зөвхөн admin эсвэл instructor эрхтэй хэрэглэгч
+    if (req.user?.role !== 'admin' && req.user?.role !== 'instructor') {
+      return res.status(403).json({ success: false, message: "Хандах эрхгүй" });
+    }
+
+    const course = await CourseModel.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+
+    if (!course) {
+      return res.status(404).json({ success: false, message: "Course олдсонгүй" });
+    }
+
+    res.json({ success: true, data: course });
+  } catch (err) {
+    console.error('Error updating course:', err);
+    res.status(500).json({ success: false, message: "Сургалт шинэчлэхэд алдаа гарлаа" });
+  }
+});
+
+// Курс устгах (admin эрхтэй)
+router.delete("/:id", authGuard, async (req: AuthRequest, res: Response) => {
+  try {
+    // Зөвхөн admin эрхтэй хэрэглэгч
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ success: false, message: "Хандах эрхгүй" });
+    }
+
+    const course = await CourseModel.findByIdAndDelete(req.params.id);
+    if (!course) {
+      return res.status(404).json({ success: false, message: "Course олдсонгүй" });
+    }
+
+    res.json({ success: true, message: "Сургалт амжилттай устгагдлаа" });
+  } catch (err) {
+    console.error('Error deleting course:', err);
+    res.status(500).json({ success: false, message: "Сургалт устгахад алдаа гарлаа" });
+  }
+});
 
 export default router;

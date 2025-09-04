@@ -7,9 +7,15 @@ import CommentModel from "../models/Comment.js";
 const router = Router();
 
 //  Бүх коммент авах
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const comments = await CommentModel.find().sort({ createdAt: -1 });
+    const { courseId, limit } = req.query as { courseId?: string; limit?: string };
+    const filter: any = {};
+    if (courseId) filter.courseId = courseId;
+    const lim = limit ? parseInt(limit, 10) : undefined;
+    const query = CommentModel.find(filter).sort({ createdAt: -1 });
+    if (lim) query.limit(lim);
+    const comments = await query.exec();
     res.json({ success: true, data: comments });
   } catch (err) {
     console.error(err);
@@ -20,7 +26,7 @@ router.get("/", async (_req, res) => {
 //  Шинэ коммент нэмэх (зөвхөн нэвтэрсэн хэрэглэгч)
 router.post("/", authGuard, async (req: AuthRequest, res) => {
   try {
-    const { content, rating } = req.body;
+    const { content, rating, courseId } = req.body;
     const user = req.user;
 
     if (!user) return res.status(401).json({ success: false, message: "Нэвтрэх шаардлагатай" });
@@ -28,6 +34,7 @@ router.post("/", authGuard, async (req: AuthRequest, res) => {
 
     const comment = await CommentModel.create({
       userId: new mongoose.Types.ObjectId(user.id), // String -> ObjectId
+      courseId: courseId ? new mongoose.Types.ObjectId(courseId) : undefined,
       name: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
       role: user.role || "student",
       content,

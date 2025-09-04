@@ -1,7 +1,8 @@
 import mongoose from "mongoose";
+import { config } from "../config.js";
 export const connectDB = async () => {
     try {
-        await mongoose.connect("mongodb://127.0.0.1:27017/elearning", {
+        await mongoose.connect(config.MONGODB_URI, {
         // options not required in Mongoose v7+
         });
         console.log("✅ MongoDB connected...");
